@@ -3,8 +3,10 @@ import { useAuth } from "./auth.jsx";
 import Layout from "./Layout.jsx";
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
-
-
+import Dashboard from "./pages/Dashboard.jsx";
+import Products from "./pages/Products.jsx";
+import ProductForm from "./pages/ProductForm.jsx";
+import Settings from "./pages/Settings.jsx";
 
 function Protected() {
   const { user, loading } = useAuth();
