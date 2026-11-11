@@ -1,0 +1,23 @@
+{
+  "name": "stockflow",
+  "version": "1.0.0",
+  "description": "Minimal multi-tenant inventory app: sign up, manage products, see a dashboard with low-stock items.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server/src/index.js",
+    "build": "npm install --prefix server && npm install --prefix client && npm run build --prefix client"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anushna76/StockFow-Inventory.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/anushna76/StockFow-Inventory/issues"
+  },
+  "homepage": "https://github.com/anushna76/StockFow-Inventory#readme"
+}
