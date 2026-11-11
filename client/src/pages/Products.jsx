@@ -1,85 +1,97 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.js";
 
-const empty = { name: "", sku: "", description: "", quantity: "0", cost_price: "", selling_price: "", low_stock_threshold: "" };
-const str = (v) => (v == null ? "" : String(v));
+const money = (n) => (n == null ? "—" : `$${Number(n).toFixed(2)}`);
 
-export default function ProductForm() {
-  const { id } = useParams();
-  const editing = Boolean(id);
-  const navigate = useNavigate();
-  const [form, setForm] = useState(empty);
-  const [loading, setLoading] = useState(editing);
+export default function Products() {
+  const [products, setProducts] = useState(null);
+  const [q, setQ] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const [adjusting, setAdjusting] = useState(null); // product id
+  const [delta, setDelta] = useState("");
+  const [note, setNote] = useState("");
 
-  useEffect(() => {
-    if (!editing) return;
-    api.get(`/products/${id}`)
-      .then(({ product: p }) => setForm({
-        name: p.name, sku: p.sku, description: str(p.description), quantity: str(p.quantity),
-        cost_price: str(p.cost_price), selling_price: str(p.selling_price), low_stock_threshold: str(p.low_stock_threshold),
-      }))
-      .catch((e) => setError(e.status === 404 ? "This product doesn't exist." : e.message))
-      .finally(() => setLoading(false));
-  }, [id, editing]);
+  const load = useCallback(() => {
+    api.get(`/products?q=${encodeURIComponent(q)}`).then((d) => setProducts(d.products)).catch((e) => setError(e.message));
+  }, [q]);
 
-  async function submit(e) {
-    e.preventDefault();
-    setError(""); setBusy(true);
-    try {
-      // Empty optional fields are sent as "" and the server stores them as null.
-      if (editing) await api.put(`/products/${id}`, form);
-      else await api.post("/products", form);
-      navigate("/products");
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
+  // Debounced server-side search by name or SKU
+  useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
+
+  async function remove(p) {
+    if (!window.confirm(`Delete "${p.name}"? This cannot be undone.`)) return;
+    try { await api.del(`/products/${p.id}`); load(); } catch (e) { setError(e.message); }
   }
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>;
+  async function adjust(e, p) {
+    e.preventDefault();
+    setError("");
+    try {
+      await api.post(`/products/${p.id}/adjust`, { delta: Number(delta), note });
+      setAdjusting(null); setDelta(""); setNote(""); load();
+    } catch (err) { setError(err.message); }
+  }
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold">{editing ? "Edit product" : "Add product"}</h1>
-      <form onSubmit={submit} className="card space-y-4 p-6">
-        {error && <div className="error" role="alert">{error}</div>}
-        <div>
-          <label className="label" htmlFor="name">Name</label>
-          <input id="name" required className="input" value={form.name} onChange={set("name")} />
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Products</h1>
+        <Link to="/products/new" className="btn-primary">Add product</Link>
+      </div>
+
+      <input className="input max-w-sm" placeholder="Search by name or SKU" aria-label="Search products" value={q} onChange={(e) => setQ(e.target.value)} />
+      {error && <div className="error" role="alert">{error}</div>}
+
+      {!products ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : products.length === 0 ? (
+        <div className="card p-6 text-sm text-gray-600">
+          {q ? "No products match your search." : <>No products yet. <Link to="/products/new" className="font-medium text-pine-700 underline">Add your first product</Link>.</>}
         </div>
-        <div>
-          <label className="label" htmlFor="sku">SKU</label>
-          <input id="sku" required className="input" value={form.sku} onChange={set("sku")} />
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 text-gray-600">
+              <tr>
+                <th className="px-4 py-3 font-medium">Name</th>
+                <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 text-right font-medium">Quantity</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 text-right font-medium">Price</th>
+                <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((p) => (
+                <tr key={p.id} className="border-b border-gray-100 align-top last:border-0">
+                  <td className="px-4 py-3 font-medium">{p.name}</td>
+                  <td className="px-4 py-3 text-gray-600">{p.sku}</td>
+                  <td className="px-4 py-3 text-right">{p.quantity}</td>
+                  <td className="px-4 py-3">
+                    {p.is_low ? <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-600">Low stock</span> : <span className="text-xs text-gray-500">OK</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right">{money(p.selling_price)}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button className="btn-secondary !px-2 !py-1" onClick={() => setAdjusting(adjusting === p.id ? null : p.id)}>Adjust</button>
+                      <Link className="btn-secondary !px-2 !py-1" to={`/products/${p.id}`}>Edit</Link>
+                      <button className="btn-danger !px-2 !py-1" onClick={() => remove(p)}>Delete</button>
+                    </div>
+                    {adjusting === p.id && (
+                      <form onSubmit={(e) => adjust(e, p)} className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                        <input type="number" step="1" required className="input !w-24" placeholder="+/- units" aria-label="Units to add or remove" value={delta} onChange={(e) => setDelta(e.target.value)} />
+                        <input className="input !w-40" placeholder="Note (optional)" aria-label="Note" value={note} onChange={(e) => setNote(e.target.value)} />
+                        <button className="btn-primary !py-1.5">Apply</button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div>
-          <label className="label" htmlFor="description">Description <span className="font-normal text-gray-500">(optional)</span></label>
-          <textarea id="description" rows={3} className="input" value={form.description} onChange={set("description")} />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="quantity">Quantity on hand</label>
-            <input id="quantity" type="number" min="0" step="1" required className="input" value={form.quantity} onChange={set("quantity")} />
-          </div>
-          <div>
-            <label className="label" htmlFor="threshold">Low stock threshold</label>
-            <input id="threshold" type="number" min="0" step="1" className="input" placeholder="Use default" value={form.low_stock_threshold} onChange={set("low_stock_threshold")} />
-          </div>
-          <div>
-            <label className="label" htmlFor="cost">Cost price</label>
-            <input id="cost" type="number" min="0" step="0.01" className="input" value={form.cost_price} onChange={set("cost_price")} />
-          </div>
-          <div>
-            <label className="label" htmlFor="price">Selling price</label>
-            <input id="price" type="number" min="0" step="0.01" className="input" value={form.selling_price} onChange={set("selling_price")} />
-          </div>
-        </div>
-        <div className="flex gap-3 pt-2">
-          <button className="btn-primary" disabled={busy}>{busy ? "Saving…" : "Save product"}</button>
-          <Link to="/products" className="btn-secondary">Cancel</Link>
-        </div>
-      </form>
+      )}
     </div>
   );
 }
