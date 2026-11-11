@@ -1,2 +1,67 @@
-# StockFlow
-SaaS inventory management MVP built with Express, SQLite, React, Vite and Tailwind.
+# StockFlow MVP
+
+Minimal multi-tenant inventory app: sign up, manage products, see a dashboard with low-stock items.
+
+**Stack:** Node + Express, SQLite (Node's built-in `node:sqlite`, no native compile step), JWT in an httpOnly cookie, bcryptjs, zod · React + Vite + Tailwind + React Router.
+
+## Run it
+
+Requires **Node 22.13 or newer** (uses the built-in `node:sqlite` module, so no C++ build tools are needed). Node prints an "ExperimentalWarning: SQLite" message on start; it is harmless.
+
+The frontend is already built into `client/dist`, and the Express server serves it, so one server runs the whole app. None of the dependencies are native binaries, so this works with Windows Smart App Control turned on.
+
+```bash
+npm run install:server
+cp server/.env.example server/.env     # PowerShell: Copy-Item server\.env.example server\.env
+# edit server/.env and set JWT_SECRET to a long random string
+npm start
+```
+
+Open http://localhost:4000, sign up, and add a product. The SQLite file (`server/stockflow.db`) is created automatically.
+
+## Changing the frontend
+
+Edit files in `client/src`, then rebuild:
+
+```bash
+npm install --prefix client
+npm run build            # writes client/dist; restart is not needed, just refresh
+```
+
+For hot reload while editing, run `npm run start` in one terminal and `npm run dev:client` in another, then open http://localhost:5173.
+
+`client/package.json` uses `overrides` to swap Rollup and esbuild for their WebAssembly builds (`@rollup/wasm-node`, `esbuild-wasm`). This avoids the unsigned native `.node`/`.exe` files that Windows Smart App Control blocks. Builds are a few seconds slower. If you are not on a locked-down machine you can delete the `overrides` block to use the faster native versions.
+
+## Test tenant isolation
+
+```bash
+npm test
+```
+
+Signs up two orgs and checks that org B gets 404 on every read, update, adjust and delete of org A's product, that SKUs are unique per org, and that stock can't go negative.
+
+## How tenancy works
+
+`org_id` is on every table and is read from the signed JWT, never from the request body. Every product query includes `AND org_id = ?`. Other orgs' IDs return 404 (not 403) so they can't be probed.
+
+## API
+
+| Route | Purpose |
+|---|---|
+| `POST /api/auth/signup` | Create org + user, set cookie |
+| `POST /api/auth/login` | Log in |
+| `POST /api/auth/logout` | Clear cookie |
+| `GET /api/auth/me` | Current user |
+| `GET/POST /api/products` | List (`?q=` searches name/SKU) / create |
+| `GET/PUT/DELETE /api/products/:id` | Read / update / delete |
+| `POST /api/products/:id/adjust` | `{ delta, note }` atomic stock adjustment |
+| `GET /api/dashboard` | Totals + low-stock list |
+| `GET/PUT /api/settings` | Default low-stock threshold |
+
+## Notes
+
+- A product is low stock when `quantity <= COALESCE(product threshold, org default)`. The org default is 5 until changed in Settings.
+- Deletes are hard deletes behind a confirm dialog.
+- `note` on stock adjustments is accepted but not stored (no movement history in the MVP).
+- Password reset is not implemented. Reset a hash directly in the DB if needed.
+- For production: set `NODE_ENV=production` (enables secure cookies, needs HTTPS), use a strong `JWT_SECRET`, add rate limiting on login, and consider moving to Postgres.
